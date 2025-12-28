@@ -27,36 +27,36 @@ def build(force: bool, directory: str):
     directory = pathlib.Path(directory)
     site = SiteRoot(directory)
     site.make_tree()
-    total_found: int = len(site.tree)
-    total_modified: int = 0
-    total_new: int = 0
 
-    logger.info("Found a total of %d pages.", total_found)
+    logger.info("Found a total of %d pages.", len(site.tree))
 
     for context in site.tree:
-        if not (context.is_modified or force):
-            logger.debug(
-                "%s has not been modified since last build. Use --force to overwrite anyway.",
-                context.source_path.name)
-            total_found -= 1
+        if context.is_modified or force:
+            build_page(context)
             continue
 
-        build_page(context)
+        logger.debug(
+            "%s has not been modified since last build. Use --force to overwrite anyway.",
+            context.source_path.name
+        )
 
-        if context.dest_path_lastmod == 0:
-            total_new += 1
-        else:
-            total_modified += 1
+    print_stats(site)
 
+
+def print_stats(site: SiteRoot) -> None:
     logger.info(
-        "\nSuccessfully built %d pages:"
-        "\n- %d new page(s)"
-        "\n- %d with change(s)"
-        "\n- %d unchanged",
-        total_found,
-        total_new,
-        total_modified,
-        len(site.tree) - (total_modified + total_new),
+        "\nSuccessfully built %d pages:\n"
+        "- %d new page(s)\n"
+        "- %d draft page(s)\n"
+        "- %d with changes\n"
+        "- %d unchanged\n"
+        "- %d deleted",
+        len(site.tree),
+        site.stats.pages_created,
+        site.stats.pages_are_draft,
+        site.stats.pages_changed,
+        site.stats.pages_unchanged,
+        site.stats.pages_deleted,
     )
 
 if __name__ == "__main__":

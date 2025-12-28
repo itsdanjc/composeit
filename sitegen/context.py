@@ -1,6 +1,19 @@
 from datetime import datetime, timezone
+from enum import IntEnum
 from pathlib import Path
 from typing import Final, Optional
+
+
+class BuildReason(IntEnum):
+    CREATED = 0
+    CHANGED = 1
+    UNCHANGED = 2
+    DELETED = 3
+
+
+BUILD_REASON_IS_MODIFIED: Final[frozenset[BuildReason]] = frozenset({
+    BuildReason.CREATED, BuildReason.CHANGED,
+})
 
 
 class BuildContext:
@@ -19,7 +32,8 @@ class BuildContext:
     source_path_lastmod: Final[datetime]
     dest_path: Final[Path]
     dest_path_lastmod: Final[Optional[datetime]]
-    template_path = Final[Path]
+    template_path: Final[Path]
+    build_reason: Final[BuildReason]
 
     def __init__(self, cwd: Path, source: Path, dest: Path):
         self.curr_working_dir = cwd
@@ -32,19 +46,25 @@ class BuildContext:
             tz=timezone.utc
         )
 
-        if self.dest_path.exists():
-            self.dest_path_lastmod = datetime.fromtimestamp(
-                self.dest_path.stat().st_mtime,
-                tz=timezone.utc
-            )
-        else:
+        if not self.dest_path.exists():
+            self.build_reason = BuildReason.CREATED
             self.dest_path_lastmod = datetime.fromtimestamp(
                 0,
-                tz=timezone.utc
+                tz=timezone.utc,
             )
+            return
+
+        self.dest_path_lastmod = datetime.fromtimestamp(
+            self.dest_path.stat().st_mtime,
+            tz=timezone.utc,
+        )
+
+        self.build_reason = (
+            BuildReason.CHANGED
+            if self.source_path_lastmod > self.dest_path_lastmod
+            else BuildReason.UNCHANGED
+        )
 
     @property
     def is_modified(self) -> bool:
-        if self.dest_path_lastmod:
-            return self.source_path_lastmod > self.dest_path_lastmod
-        return False
+        return self.build_reason in BUILD_REASON_IS_MODIFIED
