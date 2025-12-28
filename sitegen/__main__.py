@@ -5,13 +5,15 @@ from .site import SiteRoot
 from .build import build as build_page
 from .exec import MarkdownParseException, MarkdownRenderException
 from .cli import  BuildStats
+from . import __version__
 
 logger = logging.getLogger(__name__)
 cwd = Path(os.getcwd())
 
 @click.group()
 @click.option('--verbose', '-v', is_flag=True, default=False)
-def cli(verbose: bool):
+@click.version_option(version=__version__)
+def cli(verbose: bool) -> None:
     configure_logging(verbose)
 
 @cli.command(help="Build the site.")
