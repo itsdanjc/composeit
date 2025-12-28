@@ -6,7 +6,7 @@ from marko.block import Document, Heading
 from jinja2 import Environment, FileSystemLoader
 from typing import Iterable, Final, Any
 from .templates import DEFAULT_PAGE_TEMPLATE, BLANK_PAGE_DEFAULT
-from .context import BuildContext
+from .context import BuildContext, FileType
 
 logger = logging.getLogger(__name__)
 DEFAULT_EXTENSIONS: Final[frozenset[str]] = frozenset(
@@ -130,6 +130,7 @@ class Page(Markdown):
     def get_title(self):
         return self.renderer.render_children(self.title)
 
+
 def build(
         build_context: BuildContext,
         extensions: Iterable[str | MarkoExtension] | None = None,
@@ -154,21 +155,24 @@ def build(
     if not extensions:
         extensions = DEFAULT_EXTENSIONS
 
+    if build_context.type != FileType.MARKDOWN:
+        logger.warning("%s is not a Markdown or HTML file.", build_context.source_path.name)
+        return
+
     logger.info("Building page %s.", build_context.source_path.name)
-    page = Page(build_context.source_path, jinja_env, extensions)
 
     try:
+        page = Page(build_context.source_path, jinja_env, extensions)
         page.read_parse()
+
+        if page.metadata.get("is_draft", False):
+            logger.info("Page %s is draft. Skipping...", build_context.source_path)
+            return
+
+        page.render_write(build_context.dest_path, **jinja_context)
+
     except FileNotFoundError as ex:
         logger.error("Unable to open %s for reading.", build_context.source_path)
-        return
 
-    if page.metadata.get("is_draft", False):
-        logger.info("Page %s is draft. Skipping...", build_context.source_path)
-        return
-
-    try:
-        page.render_write(build_context.dest_path, **jinja_context)
     except OSError as ex:
         logger.error("Failed to write dest %s", build_context.dest_path)
-        logger.debug(ex)

@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
-from enum import IntEnum
+from enum import IntEnum, Enum
 from pathlib import Path
 from typing import Final, Optional
-
 
 class BuildReason(IntEnum):
     CREATED = 0
@@ -11,9 +10,10 @@ class BuildReason(IntEnum):
     DELETED = 3
 
 
-BUILD_REASON_IS_MODIFIED: Final[frozenset[BuildReason]] = frozenset({
-    BuildReason.CREATED, BuildReason.CHANGED,
-})
+class FileType(Enum):
+    MARKDOWN = {".md", ".markdown"}
+    HTML = {".html", ".htm"}
+    NOT_PARSEABLE = set()
 
 
 class BuildContext:
@@ -33,7 +33,6 @@ class BuildContext:
     dest_path: Final[Path]
     dest_path_lastmod: Final[Optional[datetime]]
     template_path: Final[Path]
-    build_reason: Final[BuildReason]
 
     def __init__(self, cwd: Path, source: Path, dest: Path):
         self.curr_working_dir = cwd
@@ -46,25 +45,35 @@ class BuildContext:
             tz=timezone.utc
         )
 
-        if not self.dest_path.exists():
-            self.build_reason = BuildReason.CREATED
-            self.dest_path_lastmod = datetime.fromtimestamp(
-                0,
-                tz=timezone.utc,
-            )
-            return
-
         self.dest_path_lastmod = datetime.fromtimestamp(
-            self.dest_path.stat().st_mtime,
+            self.dest_path.stat().st_mtime
+                if self.dest_path.exists()
+            else 0,
             tz=timezone.utc,
         )
 
-        self.build_reason = (
-            BuildReason.CHANGED
-            if self.source_path_lastmod > self.dest_path_lastmod
-            else BuildReason.UNCHANGED
-        )
+    @property
+    def type(self) -> FileType:
+        match_str = self.source_path.suffix.lower()
+        if match_str in FileType.MARKDOWN.value:
+            return FileType.MARKDOWN
+
+        if match_str in FileType.HTML.value:
+            return FileType.HTML
+
+        return FileType.NOT_PARSEABLE
+
+    @property
+    def build_reason(self) -> BuildReason:
+        if not self.dest_path.exists():
+            return BuildReason.CREATED
+
+        if self.source_path_lastmod > self.dest_path_lastmod:
+            return BuildReason.CHANGED
+
+        return BuildReason.UNCHANGED
+
 
     @property
     def is_modified(self) -> bool:
-        return self.build_reason in BUILD_REASON_IS_MODIFIED
+        return self.build_reason in {BuildReason.CREATED, BuildReason.CHANGED}
