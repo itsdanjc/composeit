@@ -3,10 +3,19 @@ from pathlib import Path
 from datetime import datetime, timezone
 from marko import Markdown, MarkoExtension
 from marko.block import Document, Heading
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, Template
+from jinja2.exceptions import TemplateSyntaxError
 from typing import Iterable, Final, Any
-from .templates import DEFAULT_PAGE_TEMPLATE, BLANK_PAGE_DEFAULT
+from .templates import (
+    DEFAULT_PAGE_TEMPLATE,
+    BLANK_PAGE_DEFAULT
+)
 from .context import BuildContext, FileType
+from .exec import (
+    MarkdownParseException,
+    MarkdownRenderException,
+    MarkdownTemplateException
+)
 
 logger = logging.getLogger(__name__)
 DEFAULT_EXTENSIONS: Final[frozenset[str]] = frozenset(
@@ -74,13 +83,18 @@ class Page(Markdown):
         If the body of the source file is empty, will fallback to default content.
         :return: None
         """
-        with self.document_path.open("r", errors='replace') as f:
-            doc_body: str = f.read()
-            self.metadata = dict()
-            self.body = self.parse(doc_body)
+        try:
+            with self.document_path.open("r", errors='replace') as f:
+                doc_body: str = f.read()
+                self.metadata = dict()
+                self.body = self.parse(doc_body)
+        except FileNotFoundError as e:
+            raise MarkdownParseException(
+                "Unable to open %s.", self.document_path,
+            ) from e
 
         if len(self.body.children) == 0:
-            logger.debug("%s has empty body, falling back to default.", self.document_path.name)
+            logger.warning("%s has empty body, falling back to default.", self.document_path.name)
             default_body: str = BLANK_PAGE_DEFAULT.format(
                 heading=self.document_path.stem.title(),
                 body=default,
@@ -108,20 +122,38 @@ class Page(Markdown):
         :param dest: Destination file path.
         :param jinja_context: Additional context when rendering.
         :return: None
+
+        :raises MarkdownRenderException: if rendering fails.
+        :raises MarkdownTemplateException: if rendering fails, specifically with a template.
         """
-        template = self.jinja_env.get_or_select_template(
-            ["page.html", DEFAULT_PAGE_TEMPLATE]
+        template: Template
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            template = self.jinja_env.get_or_select_template(
+                ["page.html", DEFAULT_PAGE_TEMPLATE]
+            )
+
+            with dest.open("w", encoding="utf-8") as f:
+                render_result: str = template.render(page=self, **jinja_context)
+                f.write(render_result)
+
+
+        except TemplateSyntaxError as e:
+            raise MarkdownTemplateException(
+                "%s in template %s line %d", e.message, e.lineno, e.name
+            ) from e
+
+        except Exception as e:
+            raise MarkdownRenderException(
+                "".join(e.args)
+            ) from e
+
+        logger.debug(
+            "Successfully built %s using template %s.",
+            self.document_path.name,
+            template.name
         )
 
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with dest.open("w", encoding="utf-8") as f:
-            render_result: str = template.render(page=self, **jinja_context)
-            f.write(render_result)
-            logger.debug(
-                "Successfully built %s -> %s.",
-                self.document_path,
-                dest
-            )
 
     #Methods dest be used in jinja templates
     def to_html(self):
@@ -160,19 +192,11 @@ def build(
         return
 
     logger.info("Building page %s.", build_context.source_path.name)
+    page = Page(build_context.source_path, jinja_env, extensions)
+    page.read_parse()
 
-    try:
-        page = Page(build_context.source_path, jinja_env, extensions)
-        page.read_parse()
+    if page.metadata.get("is_draft", False):
+        logger.info("Page %s is draft. Skipping...", build_context.source_path)
+        return
 
-        if page.metadata.get("is_draft", False):
-            logger.info("Page %s is draft. Skipping...", build_context.source_path)
-            return
-
-        page.render_write(build_context.dest_path, **jinja_context)
-
-    except FileNotFoundError as ex:
-        logger.error("Unable to open %s for reading.", build_context.source_path)
-
-    except OSError as ex:
-        logger.error("Failed to write dest %s", build_context.dest_path)
+    page.render_write(build_context.dest_path, **jinja_context)

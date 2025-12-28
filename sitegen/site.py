@@ -11,6 +11,7 @@ class SiteStats:
     pages_changed: int = 0
     pages_unchanged: int = 0
     pages_deleted: int = 0
+    pages_with_errors: int = 0
     pages_are_draft: int = 0
     build_time_seconds: float
 

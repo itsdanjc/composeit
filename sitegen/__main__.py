@@ -2,6 +2,7 @@ import os, click, logging, pathlib
 from .log import configure_logging
 from .site import SiteRoot
 from .build import build as build_page
+from .exec import MarkdownParseException, MarkdownRenderException, MarkdownTemplateException
 
 logger = logging.getLogger(__name__)
 cwd = pathlib.Path(os.getcwd())
@@ -31,14 +32,23 @@ def build(force: bool, directory: str):
     logger.info("Found a total of %d pages.", len(site.tree))
 
     for context in site.tree:
-        if context.is_modified or force:
-            build_page(context)
+        if not (context.is_modified or force):
+            logger.debug(
+                "%s has not been modified since last build. Use --force to overwrite anyway.",
+                context.source_path.name
+            )
             continue
 
-        logger.debug(
-            "%s has not been modified since last build. Use --force to overwrite anyway.",
-            context.source_path.name
-        )
+        try:
+            build_page(context)
+
+        except MarkdownParseException as e:
+            site.stats.pages_with_errors += 1
+            logger.error("Failed to build page %s",context.source_path)
+
+        except MarkdownRenderException as e:
+            site.stats.pages_with_errors += 1
+            logger.error("Failed to build page %s. %s",context.source_path.name, e.message)
 
     print_stats(site)
 
@@ -50,13 +60,15 @@ def print_stats(site: SiteRoot) -> None:
         "- %d draft page(s)\n"
         "- %d with changes\n"
         "- %d unchanged\n"
-        "- %d deleted",
+        "- %d deleted\n"
+        "- %d with errors",
         len(site.tree),
         site.stats.pages_created,
         site.stats.pages_are_draft,
         site.stats.pages_changed,
         site.stats.pages_unchanged,
         site.stats.pages_deleted,
+        site.stats.pages_with_errors,
     )
 
 if __name__ == "__main__":
