@@ -1,9 +1,9 @@
 import os, click, logging, time
 from pathlib import Path
+from jinja2 import TemplateError
 from .log import configure_logging
 from .site import SiteRoot
 from .build import build as build_page
-from .exec import FileTypeError
 from .cli import  BuildStats
 from . import __version__
 
@@ -49,7 +49,7 @@ def build(force: bool, directory: Path):
         try:
             build_page(context)
 
-        except OSError as e:
+        except (OSError, TemplateError) as e:
             build_stats.errors += 1
             logger.error(
                 "Failed to build page %s: %s",

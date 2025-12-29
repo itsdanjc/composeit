@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import IntEnum, Enum
 from pathlib import Path
 from typing import Final, Optional
+from markupsafe import Markup
 
 class BuildReason(IntEnum):
     CREATED = 0
@@ -14,6 +16,17 @@ class FileType(Enum):
     MARKDOWN = {".md", ".markdown"}
     HTML = {".html", ".htm"}
     NOT_PARSEABLE = set()
+
+
+@dataclass(frozen=True)
+class TemplateContext:
+    html: Markup
+    table_of_contents: Markup
+    title: Markup
+    modified: datetime
+
+    def __html__(self) -> Markup:
+        return self.html
 
 
 class BuildContext:
@@ -47,7 +60,7 @@ class BuildContext:
 
         self.dest_path_lastmod = datetime.fromtimestamp(
             self.dest_path.stat().st_mtime
-                if self.dest_path.exists()
+            if self.dest_path.exists()
             else 0,
             tz=timezone.utc,
         )
@@ -72,7 +85,6 @@ class BuildContext:
             return BuildReason.CHANGED
 
         return BuildReason.UNCHANGED
-
 
     @property
     def is_modified(self) -> bool:
