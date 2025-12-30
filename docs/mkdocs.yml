@@ -11,11 +11,21 @@ theme:
     - navigation.instant.progress
     - navigation.footer
     - toc.integrate
+    - content.code.copy
 copyright: '&copy; 2026 itsdanjc - Licensed under GNU GPL v3'
 plugins:
   - search
 markdown_extensions:
   - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - tables
   - toc
 extra:
